@@ -19,12 +19,14 @@ import {
   Trash,
   Warning,
 } from "phosphor-react";
+import { streamOllamaChat } from "./ai/ollama";
 type ToolMode = "script" | "game" | "assets" | "generate";
 type StudioItem = {
   id: string;
   name: string;
   className: string;
   color: string;
+  archivable?: boolean;
   children?: StudioItem[];
 };
 type ScriptFile = { id: string; name: string; code: string; dirty?: boolean };
@@ -216,6 +218,7 @@ export function Workbench() {
     [plan, setPlan] = useState<string[]>([]),
     [generation, setGeneration] = useState(""),
     [drafts, setDrafts] = useState<string[]>([]),
+    [aiBusy, setAiBusy] = useState(false),
     [projectName, setProjectName] = useState(
       restored?.projectName || "Combat arena",
     ),
@@ -225,6 +228,21 @@ export function Workbench() {
         : localStorage.getItem("stud-blox-explain-in-code") === "true",
     );
   const current = files.find((f) => f.id === activeFile) || files[0];
+  const updateItem = (
+    items: StudioItem[],
+    id: string,
+    changes: Partial<StudioItem>,
+  ): StudioItem[] =>
+    items.map((item) =>
+      item.id === id
+        ? { ...item, ...changes }
+        : {
+            ...item,
+            children: item.children
+              ? updateItem(item.children, id, changes)
+              : undefined,
+          },
+    );
   const filtered = useMemo(
     () =>
       services.filter(
@@ -267,6 +285,24 @@ export function Workbench() {
     setFiles((v) => v.map((f) => ({ ...f, dirty: false })));
     setNotice("Saved locally just now");
   };
+  useEffect(() => {
+    const timer = setTimeout(
+      () =>
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            services,
+            files,
+            activeFile,
+            projectName,
+            explainInCode,
+            updatedAt: new Date().toISOString(),
+          }),
+        ),
+      250,
+    );
+    return () => clearTimeout(timer);
+  }, [services, files, activeFile, projectName, explainInCode]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -314,6 +350,8 @@ export function Workbench() {
       name = `Script${files.length + 1}.lua`;
     setFiles((v) => [...v, { id, name, code: "--!strict\n\n", dirty: true }]);
     setActiveFile(id);
+    setHistory([]);
+    setFuture([]);
     setNotice(`Created ${name}`);
   };
   const addInstance = () => {
@@ -340,14 +378,101 @@ export function Workbench() {
     URL.revokeObjectURL(url);
     setNotice("Project exported");
   };
-  const askAi = (e: React.FormEvent) => {
+  const askAi = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ask.trim()) return;
-    const cleanCode = `\n\nlocal function configureSelected(instance: Instance)\n    instance:SetAttribute("StudBloxGenerated", true)\nend\n`;
-    const explainedCode = `\n\n-- AI draft for ${selected.name}\n-- Request: ${ask.trim()}\n-- Review this draft before applying it in Roblox Studio.\n${cleanCode.trimStart()}`;
-    edit(current.code + (explainInCode ? explainedCode : cleanCode));
-    setAsk("");
-    setNotice("AI draft added for review");
+    const request = ask.trim(),
+      saved = JSON.parse(
+        localStorage.getItem("stud-blox-ai-provider") || "null",
+      );
+    if ((saved?.provider || "ollama") !== "ollama") {
+      setNotice("Choose Ollama to generate script code");
+      return;
+    }
+    setAiBusy(true);
+    setNotice("Generating with Ollama…");
+    let output = "";
+    try {
+      await streamOllamaChat({
+        baseUrl: saved?.url || "http://localhost:11434",
+        model: saved?.model || "qwen3-coder:30b",
+        messages: [
+          {
+            role: "system",
+            content: `Return only production Luau code for Roblox. ${explainInCode ? "Short useful comments are allowed." : "Do not include explanations or comments."}`,
+          },
+          {
+            role: "user",
+            content: `Selected instance: ${selected.name} (${selected.className}). Request: ${request}\nCurrent file:\n${current.code}`,
+          },
+        ],
+        onToken: (token) => {
+          output += token;
+        },
+      });
+      let code = output
+        .replace(/^```(?:lua|luau)?\s*/i, "")
+        .replace(/```\s*$/, "")
+        .trim();
+      if (!explainInCode)
+        code = code
+          .split("\n")
+          .filter((line) => !line.trim().startsWith("--"))
+          .join("\n");
+      if (!code) throw new Error("The model returned no code");
+      edit(`${current.code}\n\n${code}\n`);
+      setAsk("");
+      setNotice("AI code inserted for review");
+    } catch (error) {
+      setNotice(
+        `AI failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    } finally {
+      setAiBusy(false);
+    }
+  };
+  const createGamePlan = async () => {
+    if (!gameIdea.trim() || aiBusy) return;
+    const saved = JSON.parse(
+      localStorage.getItem("stud-blox-ai-provider") || "null",
+    );
+    if ((saved?.provider || "ollama") !== "ollama") {
+      setNotice("Choose Ollama to create a real plan");
+      return;
+    }
+    setAiBusy(true);
+    setNotice("Creating plan with Ollama…");
+    let output = "";
+    try {
+      await streamOllamaChat({
+        baseUrl: saved?.url || "http://localhost:11434",
+        model: saved?.model || "qwen3-coder:30b",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Create a concise implementation plan for a Roblox experience. Return 4-8 actionable numbered steps only. Do not claim anything was built.",
+          },
+          { role: "user", content: gameIdea },
+        ],
+        onToken: (token) => {
+          output += token;
+        },
+      });
+      const steps = output
+        .split("\n")
+        .map((line) => line.replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim())
+        .filter(Boolean);
+      if (!steps.length) throw new Error("The model returned no plan");
+      setPlan(steps);
+      setNotice("Real AI plan ready");
+    } catch (error) {
+      setNotice(
+        `Plan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    } finally {
+      setAiBusy(false);
+    }
   };
   return (
     <section className="workbench">
@@ -437,9 +562,7 @@ export function Workbench() {
                   onChange={(e) => {
                     const name = e.target.value;
                     setSelected((v) => ({ ...v, name }));
-                    setServices((v) =>
-                      v.map((x) => (x.id === selected.id ? { ...x, name } : x)),
-                    );
+                    setServices((v) => updateItem(v, selected.id, { name }));
                   }}
                 />
               </label>
@@ -449,7 +572,16 @@ export function Workbench() {
               </label>
               <label>
                 Archivable
-                <select defaultValue="true">
+                <select
+                  value={String(selected.archivable ?? true)}
+                  onChange={(e) => {
+                    const archivable = e.target.value === "true";
+                    setSelected((v) => ({ ...v, archivable }));
+                    setServices((v) =>
+                      updateItem(v, selected.id, { archivable }),
+                    );
+                  }}
+                >
                   <option>true</option>
                   <option>false</option>
                 </select>
@@ -461,7 +593,11 @@ export function Workbench() {
               {files.map((f) => (
                 <button
                   className={f.id === current.id ? "active" : ""}
-                  onClick={() => setActiveFile(f.id)}
+                  onClick={() => {
+                    setActiveFile(f.id);
+                    setHistory([]);
+                    setFuture([]);
+                  }}
                   key={f.id}
                 >
                   <span />
@@ -552,7 +688,7 @@ export function Workbench() {
                   onChange={(e) => setAsk(e.target.value)}
                   placeholder={`Script ${selected.name} to…`}
                 />
-                <button disabled={!ask.trim()}>
+                <button disabled={!ask.trim() || aiBusy}>
                   <PaperPlaneTilt />
                 </button>
               </form>
@@ -591,15 +727,8 @@ export function Workbench() {
           />
           <button
             className="stage-primary"
-            disabled={!gameIdea.trim()}
-            onClick={() =>
-              setPlan([
-                "Create a small playable map and spawn flow",
-                "Build server-owned round and progression systems",
-                "Add responsive HUD, menus, and accessibility settings",
-                "Run multiplayer, mobile, and failure-path playtests",
-              ])
-            }
+            onClick={createGamePlan}
+            disabled={!gameIdea.trim() || aiBusy}
           >
             <Sparkle />
             Create build plan
@@ -651,44 +780,22 @@ export function Workbench() {
               </button>
             ))}
           </div>
-          <div className="asset-grid">
-            {shownAssets.map(([name, type], i) => (
-              <article key={name}>
-                <button
-                  className={`favorite ${favorites.includes(name) ? "active" : ""}`}
-                  onClick={() =>
-                    setFavorites((v) =>
-                      v.includes(name)
-                        ? v.filter((x) => x !== name)
-                        : [...v, name],
-                    )
-                  }
-                >
-                  <Heart
-                    weight={favorites.includes(name) ? "fill" : "regular"}
-                  />
-                </button>
-                <div className={`asset-preview preview-${i}`}>
-                  <Cube />
-                </div>
-                <span>{type}</span>
-                <h3>{name}</h3>
-                <p>Scan scripts and permissions before inserting this asset.</p>
-                <button
-                  onClick={() => setNotice(`${name} queued for inspection`)}
-                >
-                  Inspect asset
-                </button>
-              </article>
-            ))}
+          <div className="honest-tool-state">
+            <MagnifyingGlass />
+            <h3>Search on Roblox</h3>
+            <p>
+              Stud Blox opens your query in the real Creator Store. In-app
+              results and script inspection stay disabled until Roblox provides
+              a supported integration.
+            </p>
+            <a
+              href={`https://create.roblox.com/store?keyword=${encodeURIComponent(assetQuery)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Search Creator Store ↗
+            </a>
           </div>
-          {!shownAssets.length && (
-            <div className="empty-assets">
-              <MagnifyingGlass />
-              <h3>No assets match</h3>
-              <p>Try another term or remove a filter.</p>
-            </div>
-          )}
         </div>
       )}
       {mode === "generate" && (
@@ -714,13 +821,10 @@ export function Workbench() {
                 placeholder="A stylized low-poly sci-fi crate…"
               />
               <button
-                disabled={!generation.trim()}
-                onClick={() => {
-                  setDrafts((v) => [`${generation} · 3D`, ...v]);
-                  setGeneration("");
-                }}
+                disabled
+                title="A real 3D generation service is not connected"
               >
-                Add 3D draft
+                3D generation unavailable
               </button>
             </article>
             <article>
@@ -732,11 +836,10 @@ export function Workbench() {
               </p>
               <textarea placeholder="A clean inventory icon for a frost sword…" />
               <button
-                onClick={() =>
-                  setDrafts((v) => ["Frost sword inventory icon · 2D", ...v])
-                }
+                disabled
+                title="A real image generation service is not connected"
               >
-                Add 2D draft
+                2D generation unavailable
               </button>
             </article>
           </div>

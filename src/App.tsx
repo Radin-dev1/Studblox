@@ -21,7 +21,11 @@ import {
   WifiHigh,
   X,
 } from "phosphor-react";
-import { providers, QUALITY_SYSTEM_PROMPT, type ProviderId } from "./ai/providers";
+import {
+  providers,
+  QUALITY_SYSTEM_PROMPT,
+  type ProviderId,
+} from "./ai/providers";
 import { listOllamaModels, streamOllamaChat } from "./ai/ollama";
 import type { ChatMessage, InstanceNode } from "./types";
 const IconButton = ({
@@ -73,7 +77,13 @@ function ExplorerNode({
     </div>
   );
 }
-function CommandMenu({ close,onNew }: { close: () => void;onNew:()=>void }) {
+function CommandMenu({
+  close,
+  onNew,
+}: {
+  close: () => void;
+  onNew: () => void;
+}) {
   const actions = [
     ["Connect to Studio", "Detect an open Roblox Studio session"],
     ["Run quality pass", "Review, test, and repair the latest build"],
@@ -93,7 +103,17 @@ function CommandMenu({ close,onNew }: { close: () => void;onNew:()=>void }) {
         </div>
         <p className="menu-label">Quick actions</p>
         {actions.map(([a, b], i) => (
-          <button className="command-item" key={a} disabled={i<3} onClick={()=>{if(i===3){onNew();close()}}}>
+          <button
+            className="command-item"
+            key={a}
+            disabled={i < 3}
+            onClick={() => {
+              if (i === 3) {
+                onNew();
+                close();
+              }
+            }}
+          >
             <span>
               {[<WifiHigh />, <ShieldCheck />, <GitDiff />, <Plus />][i]}
             </span>
@@ -118,13 +138,28 @@ function ProviderDrawer({
   setSelected: (id: ProviderId) => void;
 }) {
   const active = providers.find((p) => p.id === selected)!;
+  const stored = useMemo(() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("stud-blox-ai-provider") || "null",
+      );
+    } catch {
+      return null;
+    }
+  }, []);
   const [key, setKey] = useState(""),
     [show, setShow] = useState(false),
-    [model, setModel] = useState(active.defaultModel),
-    [url, setUrl] = useState(active.baseUrl ?? ""),
+    [model, setModel] = useState(
+      stored?.provider === selected ? stored.model : active.defaultModel,
+    ),
+    [url, setUrl] = useState(
+      stored?.provider === selected ? stored.url : (active.baseUrl ?? ""),
+    ),
     [saved, setSaved] = useState(false),
     [installed, setInstalled] = useState<string[]>([]),
-    [connectionTest, setConnectionTest] = useState<"idle"|"testing"|"ready"|"failed">("idle");
+    [connectionTest, setConnectionTest] = useState<
+      "idle" | "testing" | "ready" | "failed"
+    >("idle");
   const choose = (id: ProviderId) => {
     const next = providers.find((p) => p.id === id)!;
     setSelected(id);
@@ -134,7 +169,17 @@ function ProviderDrawer({
     setSaved(false);
   };
   const modelInfo = active.models?.find((item) => item.id === model);
-  const testLocalConnection=async()=>{setConnectionTest("testing");try{const found=await listOllamaModels(url||"http://localhost:11434");setInstalled(found.map(item=>item.name));setConnectionTest("ready")}catch{setInstalled([]);setConnectionTest("failed")}};
+  const testLocalConnection = async () => {
+    setConnectionTest("testing");
+    try {
+      const found = await listOllamaModels(url || "http://localhost:11434");
+      setInstalled(found.map((item) => item.name));
+      setConnectionTest("ready");
+    } catch {
+      setInstalled([]);
+      setConnectionTest("failed");
+    }
+  };
   const saveConfiguration = () => {
     localStorage.setItem(
       "stud-blox-ai-provider",
@@ -174,6 +219,12 @@ function ProviderDrawer({
               key={p.id}
               className={selected === p.id ? "active" : ""}
               onClick={() => choose(p.id)}
+              disabled={p.id !== "ollama"}
+              title={
+                p.id !== "ollama"
+                  ? "This runtime is listed for future secure integration"
+                  : undefined
+              }
             >
               <span className="provider-icon">
                 {p.kind === "local" ? <HardDrives /> : <Key />}
@@ -190,7 +241,29 @@ function ProviderDrawer({
           ))}
         </div>
         <section className="provider-form">
-          {active.id === "ollama" && <div className={`ollama-test ${connectionTest}`}><span><b>{connectionTest==="ready"?"Ollama is ready":connectionTest==="failed"?"Ollama not found":"Local runtime"}</b><small>{connectionTest==="ready"?`${installed.length} installed model${installed.length===1?"":"s"}`:connectionTest==="failed"?"Start Ollama and try again":"Check your server and discover installed models"}</small></span><button onClick={testLocalConnection}>{connectionTest==="testing"?"Checking…":"Test connection"}</button></div>}
+          {active.id === "ollama" && (
+            <div className={`ollama-test ${connectionTest}`}>
+              <span>
+                <b>
+                  {connectionTest === "ready"
+                    ? "Ollama is ready"
+                    : connectionTest === "failed"
+                      ? "Ollama not found"
+                      : "Local runtime"}
+                </b>
+                <small>
+                  {connectionTest === "ready"
+                    ? `${installed.length} installed model${installed.length === 1 ? "" : "s"}`
+                    : connectionTest === "failed"
+                      ? "Start Ollama and try again"
+                      : "Check your server and discover installed models"}
+                </small>
+              </span>
+              <button onClick={testLocalConnection}>
+                {connectionTest === "testing" ? "Checking…" : "Test connection"}
+              </button>
+            </div>
+          )}
           {active.models && (
             <div className="open-models">
               <div>
@@ -210,7 +283,16 @@ function ProviderDrawer({
                     <b>{item.name}</b>
                     <small>{item.use}</small>
                   </span>
-                  <em>{installed.some(name=>name===item.id||name.startsWith(`${item.id}:`))?"INSTALLED · ":""}{item.vision ? "VISION · " : ""}{item.size}</em>
+                  <em>
+                    {installed.some(
+                      (name) =>
+                        name === item.id || name.startsWith(`${item.id}:`),
+                    )
+                      ? "INSTALLED · "
+                      : ""}
+                    {item.vision ? "VISION · " : ""}
+                    {item.size}
+                  </em>
                 </button>
               ))}
             </div>
@@ -267,7 +349,7 @@ function ProviderDrawer({
           <button
             className="save-provider"
             onClick={saveConfiguration}
-            disabled={active.kind === "api" && !key.trim()}
+            disabled={active.kind === "api" || !model.trim()}
           >
             {saved ? (
               <>
@@ -275,7 +357,11 @@ function ProviderDrawer({
                 Configuration ready
               </>
             ) : (
-              <>Use {active.name}</>
+              <>
+                {active.kind === "api"
+                  ? "Cloud runtime not connected"
+                  : `Use ${active.name}`}
+              </>
             )}
           </button>
           {active.kind === "api" && (
@@ -291,25 +377,60 @@ function ProviderDrawer({
   );
 }
 export function App() {
-  type StoredSession={id:string;title:string;updatedAt:string;messages:ChatMessage[]};
-  const savedSessions=useMemo<StoredSession[]>(()=>{try{return JSON.parse(localStorage.getItem("stud-blox-chat-sessions")||"[]")}catch{return []}},[]);
-  const firstSession=savedSessions[0]||{id:crypto.randomUUID(),title:"New build session",updatedAt:new Date().toISOString(),messages:[]};
+  type StoredSession = {
+    id: string;
+    title: string;
+    updatedAt: string;
+    messages: ChatMessage[];
+  };
+  const savedSessions = useMemo<StoredSession[]>(() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("stud-blox-chat-sessions") || "[]",
+      );
+    } catch {
+      return [];
+    }
+  }, []);
+  const initialProvider = useMemo<ProviderId>(() => "ollama", []);
+  const firstSession = savedSessions[0] || {
+    id: crypto.randomUUID(),
+    title: "New build session",
+    updatedAt: new Date().toISOString(),
+    messages: [],
+  };
   const [sidebar, setSidebar] = useState(true),
     [panel, setPanel] = useState<"explorer" | "changes" | "playtest">(
       "explorer",
     ),
     [command, setCommand] = useState(false),
     [settings, setSettings] = useState(false),
-    [chatSessions,setChatSessions]=useState<StoredSession[]>(savedSessions.length?savedSessions:[firstSession]),
-    [currentSessionId,setCurrentSessionId]=useState(firstSession.id),
+    [chatSessions, setChatSessions] = useState<StoredSession[]>(
+      savedSessions.length ? savedSessions : [firstSession],
+    ),
+    [currentSessionId, setCurrentSessionId] = useState(firstSession.id),
     [messages, setMessages] = useState<ChatMessage[]>(firstSession.messages),
     [prompt, setPrompt] = useState(""),
-    [provider, setProvider] = useState<ProviderId>("ollama"),
+    [provider, setProvider] = useState<ProviderId>(initialProvider),
     [building, setBuilding] = useState(false),
-    [runtime, setRuntime] = useState<"idle" | "local" | "fallback" | "error">("idle");
+    [runtime, setRuntime] = useState<"idle" | "local" | "fallback" | "error">(
+      "idle",
+    );
   const generation = useRef<AbortController | null>(null);
-  const currentSession=chatSessions.find(session=>session.id===currentSessionId)||firstSession;
+  const currentSession =
+    chatSessions.find((session) => session.id === currentSessionId) ||
+    firstSession;
   const active = providers.find((p) => p.id === provider)!;
+  const configuredModel = (() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("stud-blox-ai-provider") || "null",
+      );
+      return saved?.provider === provider ? saved.model : active.defaultModel;
+    } catch {
+      return active.defaultModel;
+    }
+  })();
   const wordCount = useMemo(
     () => (prompt.trim() ? prompt.trim().split(/\s+/).length : 0),
     [prompt],
@@ -332,32 +453,130 @@ export function App() {
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, []);
-  useEffect(()=>{setChatSessions(current=>{const next=current.map(session=>session.id===currentSessionId?{...session,messages,updatedAt:new Date().toISOString()}:session);localStorage.setItem("stud-blox-chat-sessions",JSON.stringify(next));return next})},[messages,currentSessionId]);
-  const newSession=()=>{generation.current?.abort();const session:StoredSession={id:crypto.randomUUID(),title:"New build session",updatedAt:new Date().toISOString(),messages:[]};setChatSessions(current=>[session,...current]);setCurrentSessionId(session.id);setMessages([]);setPrompt("");setBuilding(false)};
-  const openSession=(session:StoredSession)=>{generation.current?.abort();setCurrentSessionId(session.id);setMessages(session.messages);setPrompt("");setBuilding(false)};
+  useEffect(() => {
+    setChatSessions((current) => {
+      const next = current.map((session) =>
+        session.id === currentSessionId
+          ? { ...session, messages, updatedAt: new Date().toISOString() }
+          : session,
+      );
+      localStorage.setItem("stud-blox-chat-sessions", JSON.stringify(next));
+      return next;
+    });
+  }, [messages, currentSessionId]);
+  const newSession = () => {
+    generation.current?.abort();
+    const session: StoredSession = {
+      id: crypto.randomUUID(),
+      title: "New build session",
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+    setChatSessions((current) => [session, ...current]);
+    setCurrentSessionId(session.id);
+    setMessages([]);
+    setPrompt("");
+    setBuilding(false);
+  };
+  const openSession = (session: StoredSession) => {
+    generation.current?.abort();
+    setCurrentSessionId(session.id);
+    setMessages(session.messages);
+    setPrompt("");
+    setBuilding(false);
+  };
   const send = async () => {
     if (!prompt.trim() || building) return;
     const content = prompt.trim();
     setPrompt("");
-    const userMessage:ChatMessage={id:crypto.randomUUID(),role:"user",content};
-    if(currentSession.title==="New build session")setChatSessions(current=>current.map(session=>session.id===currentSessionId?{...session,title:content.slice(0,42)+(content.length>42?"…":"")}:session));
-    setMessages((v) => [...v,userMessage]);
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+    };
+    if (currentSession.title === "New build session")
+      setChatSessions((current) =>
+        current.map((session) =>
+          session.id === currentSessionId
+            ? {
+                ...session,
+                title: content.slice(0, 42) + (content.length > 42 ? "…" : ""),
+              }
+            : session,
+        ),
+      );
+    setMessages((v) => [...v, userMessage]);
     setBuilding(true);
-    const saved=JSON.parse(localStorage.getItem("stud-blox-ai-provider")||"null");
-    if((saved?.provider||provider)!=="ollama"){
+    const saved = JSON.parse(
+      localStorage.getItem("stud-blox-ai-provider") || "null",
+    );
+    if ((saved?.provider || provider) !== "ollama") {
       setRuntime("fallback");
-      setMessages(v=>[...v,{id:crypto.randomUUID(),role:"assistant",content:"This provider is configured, but direct cloud calls are disabled in the desktop preview to keep API keys out of the renderer. Choose Ollama for live local responses."}]);
-      setBuilding(false);return;
+      setMessages((v) => [
+        ...v,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            "This provider is configured, but direct cloud calls are disabled in the desktop preview to keep API keys out of the renderer. Choose Ollama for live local responses.",
+        },
+      ]);
+      setBuilding(false);
+      return;
     }
-    const id=crypto.randomUUID(),controller=new AbortController();generation.current=controller;
-    setMessages(v=>[...v,{id,role:"assistant",content:""}]);
-    try{
+    const id = crypto.randomUUID(),
+      controller = new AbortController();
+    generation.current = controller;
+    setMessages((v) => [...v, { id, role: "assistant", content: "" }]);
+    try {
       setRuntime("local");
-      await streamOllamaChat({baseUrl:saved?.url||"http://localhost:11434",model:saved?.model||active.defaultModel,signal:controller.signal,messages:[{role:"system",content:QUALITY_SYSTEM_PROMPT},...messages.map(({role,content})=>({role,content})),{role:"user",content}],onToken:(token)=>setMessages(v=>v.map(message=>message.id===id?{...message,content:message.content+token}:message))});
-    }catch(error){
-      if(controller.signal.aborted)setMessages(v=>v.map(message=>message.id===id?{...message,content:message.content||"Generation stopped."}:message));
-      else{setRuntime("error");setMessages(v=>v.map(message=>message.id===id?{...message,content:`Could not reach Ollama. Start Ollama, install ${saved?.model||active.defaultModel}, then try again. ${error instanceof Error?error.message:""}`}:message))}
-    }finally{generation.current=null;setBuilding(false)}
+      await streamOllamaChat({
+        baseUrl: saved?.url || "http://localhost:11434",
+        model: saved?.model || active.defaultModel,
+        signal: controller.signal,
+        messages: [
+          { role: "system", content: QUALITY_SYSTEM_PROMPT },
+          ...messages.map(({ role, content }) => ({ role, content })),
+          { role: "user", content },
+        ],
+        onToken: (token) =>
+          setMessages((v) =>
+            v.map((message) =>
+              message.id === id
+                ? { ...message, content: message.content + token }
+                : message,
+            ),
+          ),
+      });
+    } catch (error) {
+      if (controller.signal.aborted)
+        setMessages((v) =>
+          v.map((message) =>
+            message.id === id
+              ? {
+                  ...message,
+                  content: message.content || "Generation stopped.",
+                }
+              : message,
+          ),
+        );
+      else {
+        setRuntime("error");
+        setMessages((v) =>
+          v.map((message) =>
+            message.id === id
+              ? {
+                  ...message,
+                  content: `Could not reach Ollama. Start Ollama, install ${saved?.model || active.defaultModel}, then try again. ${error instanceof Error ? error.message : ""}`,
+                }
+              : message,
+          ),
+        );
+      }
+    } finally {
+      generation.current = null;
+      setBuilding(false);
+    }
   };
   return (
     <div className={`app ${sidebar ? "" : "sidebar-closed"}`}>
@@ -430,7 +649,7 @@ export function App() {
               <button
                 className={`session ${s.id === currentSessionId ? "active" : ""}`}
                 key={s.id}
-                onClick={()=>openSession(s)}
+                onClick={() => openSession(s)}
               >
                 <span>{s.title}</span>
                 <small>{s.messages.length} msgs</small>
@@ -444,9 +663,19 @@ export function App() {
                 Local engine
               </span>
               <b>FREE</b>
-              <p>{runtime==="local"?"Ollama connected":runtime==="error"?"Ollama unavailable":"No metered usage"}</p>
+              <p>
+                {runtime === "local"
+                  ? "Ollama connected"
+                  : runtime === "error"
+                    ? "Ollama unavailable"
+                    : "No metered usage"}
+              </p>
             </div>
-            <button className="side-link" disabled title="Shortcut guide is not implemented yet">
+            <button
+              className="side-link"
+              disabled
+              title="Shortcut guide is not implemented yet"
+            >
               <Command />
               Keyboard shortcuts
             </button>
@@ -462,7 +691,7 @@ export function App() {
             </div>
             <button className="model" onClick={() => setSettings(true)}>
               <span className={active.kind} />
-              {active.name} · {active.defaultModel}
+              {active.name} · {configuredModel}
               <CaretRight size={13} />
             </button>
           </div>
@@ -474,7 +703,16 @@ export function App() {
             <button onClick={() => setSettings(true)}>Configure</button>
           </div>
           <div className="messages">
-            {!messages.length&&<div className="real-empty-chat"><Sparkle/><h2>What are you building?</h2><p>Start a real conversation with your selected Ollama model. This session saves locally as you work.</p></div>}
+            {!messages.length && (
+              <div className="real-empty-chat">
+                <Sparkle />
+                <h2>What are you building?</h2>
+                <p>
+                  Start a real conversation with your selected Ollama model.
+                  This session saves locally as you work.
+                </p>
+              </div>
+            )}
             {messages.map((m) => (
               <article className={`message ${m.role}`} key={m.id}>
                 {m.role === "assistant" && (
@@ -496,7 +734,13 @@ export function App() {
                   )}
                   {m.role === "assistant" && (
                     <div className="message-actions">
-                      <button onClick={()=>navigator.clipboard?.writeText(m.content)}>Copy</button>
+                      <button
+                        onClick={() =>
+                          navigator.clipboard?.writeText(m.content)
+                        }
+                      >
+                        Copy
+                      </button>
                       <button onClick={() => setPanel("changes")}>
                         Open changes
                       </button>
@@ -514,8 +758,18 @@ export function App() {
                   <i />
                   <i />
                   <i />
-                  <span>{runtime==="local"?"Generating with your local Ollama model":"Preparing the build"}</span>
-                  <button className="stop-generation" onClick={()=>generation.current?.abort()}><Stop/>Stop</button>
+                  <span>
+                    {runtime === "local"
+                      ? "Generating with your local Ollama model"
+                      : "Preparing the build"}
+                  </span>
+                  <button
+                    className="stop-generation"
+                    onClick={() => generation.current?.abort()}
+                  >
+                    <Stop />
+                    Stop
+                  </button>
                 </div>
               </article>
             )}
@@ -536,7 +790,10 @@ export function App() {
               />
               <div className="composer-tools">
                 <div>
-                  <button title="File attachments are not implemented yet" disabled>
+                  <button
+                    title="File attachments are not implemented yet"
+                    disabled
+                  >
                     <Plus size={17} />
                   </button>
                   <button className="mode" disabled>
@@ -561,7 +818,10 @@ export function App() {
                 </span>
               </div>
             </div>
-            <p className="hint">AI responses come from your configured model. Studio changes require a future bridge connection.</p>
+            <p className="hint">
+              AI responses come from your configured model. Studio changes
+              require a future bridge connection.
+            </p>
           </div>
         </section>
         <aside className="inspector">
@@ -594,7 +854,14 @@ export function App() {
                 <MagnifyingGlass />
                 <input placeholder="Filter instances" />
               </div>
-              <div className="honest-empty"><TreeStructure/><b>No Studio connection</b><span>Explorer data will appear after the Roblox Studio bridge is installed and connected.</span></div>
+              <div className="honest-empty">
+                <TreeStructure />
+                <b>No Studio connection</b>
+                <span>
+                  Explorer data will appear after the Roblox Studio bridge is
+                  installed and connected.
+                </span>
+              </div>
               <div className="properties">
                 <p>SELECTION</p>
                 <div className="empty-selection">
@@ -606,8 +873,18 @@ export function App() {
           )}
           {panel === "changes" && (
             <div className="change-list">
-              <div className="change-summary"><b>No changes yet</b><span>clean</span></div>
-              <div className="honest-empty"><GitDiff/><b>Nothing to review</b><span>Real file changes will appear here after a Studio bridge applies them.</span></div>
+              <div className="change-summary">
+                <b>No changes yet</b>
+                <span>clean</span>
+              </div>
+              <div className="honest-empty">
+                <GitDiff />
+                <b>Nothing to review</b>
+                <span>
+                  Real file changes will appear here after a Studio bridge
+                  applies them.
+                </span>
+              </div>
             </div>
           )}
           {panel === "playtest" && (
@@ -621,12 +898,16 @@ export function App() {
                 player flows here.
               </p>
               <button disabled>Start playtest</button>
-              <small>Playtests are unavailable until the real Studio bridge ships.</small>
+              <small>
+                Playtests are unavailable until the real Studio bridge ships.
+              </small>
             </div>
           )}
         </aside>
       </main>
-      {command && <CommandMenu close={() => setCommand(false)} onNew={newSession} />}{" "}
+      {command && (
+        <CommandMenu close={() => setCommand(false)} onNew={newSession} />
+      )}{" "}
       {settings && (
         <ProviderDrawer
           close={() => setSettings(false)}
