@@ -4,6 +4,8 @@ An independent AI workspace for building Roblox experiences. Stud Blox is design
 
 **Live site:** https://radin-dev1.github.io/Studblox/
 
+The public URL opens on a black-and-white product website. Visitors can learn how Stud Blox works, review its local-model approach, use validated login/signup previews, and then enter the full creation workspace.
+
 ## Product preview
 
 This repository currently contains the polished web application shell and interaction prototype. It includes build sessions, model selection, a command palette, Studio connection state, a live-style Explorer, change review, playtesting states, and a responsive interface.
