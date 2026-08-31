@@ -7,6 +7,7 @@ import './auth.css';
 import './colors.css';
 import './styles.css';
 import './providers.css';
+import './ai-models.css';
 import './workbench.css';
 import './workbench-tools.css';
 import './overlay.css';

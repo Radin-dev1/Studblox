@@ -5,5 +5,5 @@ export default defineConfig(({command,mode})=>({
   // GitHub Pages serves project sites below /Studblox/.
   // Keep / during local development so the dev server remains simple.
   base:mode==='desktop'?'./':command==='build'?'/Studblox/':'/',
-  build:{rollupOptions:{input:{index:'app.html'}}}
+  build:{rollupOptions:{input:{index:'shell.html'}}}
 }));
