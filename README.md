@@ -51,6 +51,17 @@ The shared quality policy lives in `src/ai/providers.ts`. It requires the build 
 - Script diffs, rollback checkpoints, and test assertions
 - Provider adapters and usage controls
 
+## Studio tools
+
+The interactive product preview includes four connected creation modes:
+
+- **Script** — browse a Studio-style class tree, select an instance, edit Luau, and ask the AI to script with that selection as context.
+- **Build game** — describe a complete experience and turn it into a reviewable system-by-system build plan.
+- **Creator Store** — search and inspect models, images, audio, meshes, and materials before inserting them.
+- **Generate** — create original 3D model or 2D image drafts for later review and Studio insertion.
+
+The Creator Store, Studio mutation, and generation buttons are interface boundaries in the web preview. Production calls belong in the desktop main process so permissions, asset provenance, API credentials, and imported scripts can be checked safely.
+
 ## License
 
 MIT
