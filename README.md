@@ -2,6 +2,8 @@
 
 An independent AI workspace for building Roblox experiences. Stud Blox is designed around a focused agent workflow: describe a system, inspect the proposed instance and script changes, connect Roblox Studio, then playtest before publishing.
 
+**Live site:** https://radin-dev1.github.io/Studblox/
+
 ## Product preview
 
 This repository currently contains the polished web application shell and interaction prototype. It includes build sessions, model selection, a command palette, Studio connection state, a live-style Explorer, change review, playtesting states, and a responsive interface.
