@@ -33,6 +33,15 @@ npm run build
 - Keyboard-first navigation and visible focus behavior
 - Provider-neutral model UX
 - Original code and visual identity; no third-party proprietary assets
+- Open-source local models first through Ollama or LM Studio
+- Optional OpenAI, Anthropic, OpenRouter, or custom compatible APIs
+- A five-stage quality gate: inspect, plan, implement, review, and playtest/repair
+
+## AI configuration
+
+Stud Blox defaults to Ollama with an open coding model, so a paid API is not required. Users can switch to LM Studio or add a cloud API from **AI providers**. API secrets must never be committed or exposed to the renderer; the desktop implementation should store them in the operating-system keychain.
+
+The shared quality policy lives in `src/ai/providers.ts`. It requires the build agent to preserve existing systems, use server-authoritative Roblox patterns, review changes, run focused playtests, repair failures, and avoid claiming success without verification.
 
 ## Roadmap
 
