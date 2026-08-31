@@ -1,6 +1,7 @@
 export type ProviderId =
   | "ollama"
   | "lmstudio"
+  | "minimax"
   | "openai"
   | "anthropic"
   | "openrouter"
@@ -22,6 +23,13 @@ export type Provider = {
   models?: ModelOption[];
 };
 export const openModels: ModelOption[] = [
+  {
+    id: "minimax-m3:cloud",
+    name: "MiniMax M3",
+    size: "Ollama Cloud",
+    use: "Frontier coding, agent workflows, and long-context projects",
+    vision: true,
+  },
   {
     id: "qwen3-coder:30b",
     name: "Qwen3 Coder 30B",
@@ -97,6 +105,23 @@ export const providers: Provider[] = [
     defaultModel: "qwen3-coder:30b",
     baseUrl: "http://localhost:1234/v1",
     models: openModels,
+  },
+  {
+    id: "minimax",
+    name: "MiniMax",
+    kind: "api",
+    description: "MiniMax M3 through the official OpenAI-compatible API.",
+    defaultModel: "MiniMax-M3",
+    baseUrl: "https://api.minimax.io/v1",
+    models: [
+      {
+        id: "MiniMax-M3",
+        name: "MiniMax M3",
+        size: "Cloud · 1M context",
+        use: "Coding, tool use, reasoning, and native multimodality",
+        vision: true,
+      },
+    ],
   },
   {
     id: "openai",
