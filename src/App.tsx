@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   CaretRight,
@@ -16,13 +16,15 @@ import {
   ShieldCheck,
   SidebarSimple,
   Sparkle,
+  Stop,
   TreeStructure,
   WifiHigh,
   X,
 } from "phosphor-react";
 import { initialMessages, sessions, tree } from "./data";
-import { providers, qualityStages, type ProviderId } from "./ai/providers";
-import type { InstanceNode } from "./types";
+import { providers, QUALITY_SYSTEM_PROMPT, type ProviderId } from "./ai/providers";
+import { listOllamaModels, streamOllamaChat } from "./ai/ollama";
+import type { ChatMessage, InstanceNode } from "./types";
 const IconButton = ({
   label,
   children,
@@ -121,7 +123,9 @@ function ProviderDrawer({
     [show, setShow] = useState(false),
     [model, setModel] = useState(active.defaultModel),
     [url, setUrl] = useState(active.baseUrl ?? ""),
-    [saved, setSaved] = useState(false);
+    [saved, setSaved] = useState(false),
+    [installed, setInstalled] = useState<string[]>([]),
+    [connectionTest, setConnectionTest] = useState<"idle"|"testing"|"ready"|"failed">("idle");
   const choose = (id: ProviderId) => {
     const next = providers.find((p) => p.id === id)!;
     setSelected(id);
@@ -131,6 +135,7 @@ function ProviderDrawer({
     setSaved(false);
   };
   const modelInfo = active.models?.find((item) => item.id === model);
+  const testLocalConnection=async()=>{setConnectionTest("testing");try{const found=await listOllamaModels(url||"http://localhost:11434");setInstalled(found.map(item=>item.name));setConnectionTest("ready")}catch{setInstalled([]);setConnectionTest("failed")}};
   const saveConfiguration = () => {
     localStorage.setItem(
       "stud-blox-ai-provider",
@@ -186,6 +191,7 @@ function ProviderDrawer({
           ))}
         </div>
         <section className="provider-form">
+          {active.id === "ollama" && <div className={`ollama-test ${connectionTest}`}><span><b>{connectionTest==="ready"?"Ollama is ready":connectionTest==="failed"?"Ollama not found":"Local runtime"}</b><small>{connectionTest==="ready"?`${installed.length} installed model${installed.length===1?"":"s"}`:connectionTest==="failed"?"Start Ollama and try again":"Check your server and discover installed models"}</small></span><button onClick={testLocalConnection}>{connectionTest==="testing"?"Checking…":"Test connection"}</button></div>}
           {active.models && (
             <div className="open-models">
               <div>
@@ -205,7 +211,7 @@ function ProviderDrawer({
                     <b>{item.name}</b>
                     <small>{item.use}</small>
                   </span>
-                  <em>{item.vision ? "VISION · " : ""}{item.size}</em>
+                  <em>{installed.some(name=>name===item.id||name.startsWith(`${item.id}:`))?"INSTALLED · ":""}{item.vision ? "VISION · " : ""}{item.size}</em>
                 </button>
               ))}
             </div>
@@ -293,10 +299,12 @@ export function App() {
     [command, setCommand] = useState(false),
     [settings, setSettings] = useState(false),
     [connected, setConnected] = useState(false),
-    [messages, setMessages] = useState(initialMessages),
+    [messages, setMessages] = useState<ChatMessage[]>(initialMessages),
     [prompt, setPrompt] = useState(""),
     [provider, setProvider] = useState<ProviderId>("ollama"),
-    [building, setBuilding] = useState(false);
+    [building, setBuilding] = useState(false),
+    [runtime, setRuntime] = useState<"idle" | "local" | "fallback" | "error">("idle");
+  const generation = useRef<AbortController | null>(null);
   const active = providers.find((p) => p.id === provider)!;
   const wordCount = useMemo(
     () => (prompt.trim() ? prompt.trim().split(/\s+/).length : 0),
@@ -316,28 +324,28 @@ export function App() {
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, []);
-  const send = () => {
+  const send = async () => {
     if (!prompt.trim() || building) return;
     const content = prompt.trim();
     setPrompt("");
-    setMessages((v) => [
-      ...v,
-      { id: crypto.randomUUID(), role: "user", content },
-    ]);
+    const userMessage:ChatMessage={id:crypto.randomUUID(),role:"user",content};
+    setMessages((v) => [...v,userMessage]);
     setBuilding(true);
-    setTimeout(() => {
-      setMessages((v) => [
-        ...v,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            "I prepared this as a verified build instead of a one-shot answer. Connect Studio to apply the plan, inspect the diff, and run its tests.",
-          steps: qualityStages,
-        },
-      ]);
-      setBuilding(false);
-    }, 1100);
+    const saved=JSON.parse(localStorage.getItem("stud-blox-ai-provider")||"null");
+    if((saved?.provider||provider)!=="ollama"){
+      setRuntime("fallback");
+      setMessages(v=>[...v,{id:crypto.randomUUID(),role:"assistant",content:"This provider is configured, but direct cloud calls are disabled in the desktop preview to keep API keys out of the renderer. Choose Ollama for live local responses."}]);
+      setBuilding(false);return;
+    }
+    const id=crypto.randomUUID(),controller=new AbortController();generation.current=controller;
+    setMessages(v=>[...v,{id,role:"assistant",content:""}]);
+    try{
+      setRuntime("local");
+      await streamOllamaChat({baseUrl:saved?.url||"http://localhost:11434",model:saved?.model||active.defaultModel,signal:controller.signal,messages:[{role:"system",content:QUALITY_SYSTEM_PROMPT},...messages.map(({role,content})=>({role,content})),{role:"user",content}],onToken:(token)=>setMessages(v=>v.map(message=>message.id===id?{...message,content:message.content+token}:message))});
+    }catch(error){
+      if(controller.signal.aborted)setMessages(v=>v.map(message=>message.id===id?{...message,content:message.content||"Generation stopped."}:message));
+      else{setRuntime("error");setMessages(v=>v.map(message=>message.id===id?{...message,content:`Could not reach Ollama. Start Ollama, install ${saved?.model||active.defaultModel}, then try again. ${error instanceof Error?error.message:""}`}:message))}
+    }finally{generation.current=null;setBuilding(false)}
   };
   return (
     <div className={`app ${sidebar ? "" : "sidebar-closed"}`}>
@@ -422,7 +430,7 @@ export function App() {
                 Local engine
               </span>
               <b>FREE</b>
-              <p>No metered usage</p>
+              <p>{runtime==="local"?"Ollama connected":runtime==="error"?"Ollama unavailable":"No metered usage"}</p>
             </div>
             <button className="side-link">
               <Command />
@@ -473,7 +481,7 @@ export function App() {
                   )}
                   {m.role === "assistant" && (
                     <div className="message-actions">
-                      <button>Copy</button>
+                      <button onClick={()=>navigator.clipboard?.writeText(m.content)}>Copy</button>
                       <button onClick={() => setPanel("changes")}>
                         Open changes
                       </button>
@@ -491,7 +499,8 @@ export function App() {
                   <i />
                   <i />
                   <i />
-                  <span>Inspecting, planning, and checking the build</span>
+                  <span>{runtime==="local"?"Generating with your local Ollama model":"Preparing the build"}</span>
+                  <button className="stop-generation" onClick={()=>generation.current?.abort()}><Stop/>Stop</button>
                 </div>
               </article>
             )}
