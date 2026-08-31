@@ -4,5 +4,6 @@ export default defineConfig(({command})=>({
   plugins:[react()],
   // GitHub Pages serves project sites below /Studblox/.
   // Keep / during local development so the dev server remains simple.
-  base:command==='build'?'/Studblox/':'/'
+  base:command==='build'?'/Studblox/':'/',
+  build:{rollupOptions:{input:{index:'app.html'}}}
 }));
