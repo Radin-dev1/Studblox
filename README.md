@@ -6,6 +6,8 @@ An independent AI workspace for building Roblox experiences. Stud Blox is design
 
 The public URL opens on a black-and-white product website. Visitors can learn how Stud Blox works, review its local-model approach, use validated login/signup previews, and then enter the full creation workspace.
 
+Authentication uses Supabase with four routes: email/password, Google, GitHub, and Discord. Configure `VITE_SUPABASE_URL` as a GitHub Actions variable and `VITE_SUPABASE_PUBLISHABLE_KEY` as a repository secret. Enable each OAuth provider in Supabase and allow `https://radin-dev1.github.io/Studblox/` as a redirect URL. Never place a Supabase service-role key in the frontend.
+
 ## Product preview
 
 This repository currently contains the polished web application shell and interaction prototype. It includes build sessions, model selection, a command palette, Studio connection state, a live-style Explorer, change review, playtesting states, and a responsive interface.
