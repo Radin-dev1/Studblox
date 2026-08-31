@@ -21,7 +21,6 @@ import {
   WifiHigh,
   X,
 } from "phosphor-react";
-import { initialMessages, sessions, tree } from "./data";
 import { providers, QUALITY_SYSTEM_PROMPT, type ProviderId } from "./ai/providers";
 import { listOllamaModels, streamOllamaChat } from "./ai/ollama";
 import type { ChatMessage, InstanceNode } from "./types";
@@ -74,7 +73,7 @@ function ExplorerNode({
     </div>
   );
 }
-function CommandMenu({ close }: { close: () => void }) {
+function CommandMenu({ close,onNew }: { close: () => void;onNew:()=>void }) {
   const actions = [
     ["Connect to Studio", "Detect an open Roblox Studio session"],
     ["Run quality pass", "Review, test, and repair the latest build"],
@@ -94,7 +93,7 @@ function CommandMenu({ close }: { close: () => void }) {
         </div>
         <p className="menu-label">Quick actions</p>
         {actions.map(([a, b], i) => (
-          <button className="command-item" key={a}>
+          <button className="command-item" key={a} disabled={i<3} onClick={()=>{if(i===3){onNew();close()}}}>
             <span>
               {[<WifiHigh />, <ShieldCheck />, <GitDiff />, <Plus />][i]}
             </span>
@@ -292,19 +291,24 @@ function ProviderDrawer({
   );
 }
 export function App() {
+  type StoredSession={id:string;title:string;updatedAt:string;messages:ChatMessage[]};
+  const savedSessions=useMemo<StoredSession[]>(()=>{try{return JSON.parse(localStorage.getItem("stud-blox-chat-sessions")||"[]")}catch{return []}},[]);
+  const firstSession=savedSessions[0]||{id:crypto.randomUUID(),title:"New build session",updatedAt:new Date().toISOString(),messages:[]};
   const [sidebar, setSidebar] = useState(true),
     [panel, setPanel] = useState<"explorer" | "changes" | "playtest">(
       "explorer",
     ),
     [command, setCommand] = useState(false),
     [settings, setSettings] = useState(false),
-    [connected, setConnected] = useState(false),
-    [messages, setMessages] = useState<ChatMessage[]>(initialMessages),
+    [chatSessions,setChatSessions]=useState<StoredSession[]>(savedSessions.length?savedSessions:[firstSession]),
+    [currentSessionId,setCurrentSessionId]=useState(firstSession.id),
+    [messages, setMessages] = useState<ChatMessage[]>(firstSession.messages),
     [prompt, setPrompt] = useState(""),
     [provider, setProvider] = useState<ProviderId>("ollama"),
     [building, setBuilding] = useState(false),
     [runtime, setRuntime] = useState<"idle" | "local" | "fallback" | "error">("idle");
   const generation = useRef<AbortController | null>(null);
+  const currentSession=chatSessions.find(session=>session.id===currentSessionId)||firstSession;
   const active = providers.find((p) => p.id === provider)!;
   const wordCount = useMemo(
     () => (prompt.trim() ? prompt.trim().split(/\s+/).length : 0),
@@ -316,6 +320,10 @@ export function App() {
         e.preventDefault();
         setCommand(true);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        newSession();
+      }
       if (e.key === "Escape") {
         setCommand(false);
         setSettings(false);
@@ -324,11 +332,15 @@ export function App() {
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, []);
+  useEffect(()=>{setChatSessions(current=>{const next=current.map(session=>session.id===currentSessionId?{...session,messages,updatedAt:new Date().toISOString()}:session);localStorage.setItem("stud-blox-chat-sessions",JSON.stringify(next));return next})},[messages,currentSessionId]);
+  const newSession=()=>{generation.current?.abort();const session:StoredSession={id:crypto.randomUUID(),title:"New build session",updatedAt:new Date().toISOString(),messages:[]};setChatSessions(current=>[session,...current]);setCurrentSessionId(session.id);setMessages([]);setPrompt("");setBuilding(false)};
+  const openSession=(session:StoredSession)=>{generation.current?.abort();setCurrentSessionId(session.id);setMessages(session.messages);setPrompt("");setBuilding(false)};
   const send = async () => {
     if (!prompt.trim() || building) return;
     const content = prompt.trim();
     setPrompt("");
     const userMessage:ChatMessage={id:crypto.randomUUID(),role:"user",content};
+    if(currentSession.title==="New build session")setChatSessions(current=>current.map(session=>session.id===currentSessionId?{...session,title:content.slice(0,42)+(content.length>42?"…":"")}:session));
     setMessages((v) => [...v,userMessage]);
     setBuilding(true);
     const saved=JSON.parse(localStorage.getItem("stud-blox-ai-provider")||"null");
@@ -370,12 +382,13 @@ export function App() {
         </button>
         <div className="top-actions">
           <button
-            className={`connection ${connected ? "connected" : ""}`}
-            onClick={() => setConnected((v) => !v)}
+            className="connection"
+            disabled
+            title="The Roblox Studio bridge is not available yet"
           >
             <span />
             <WifiHigh size={16} />
-            {connected ? "Studio connected" : "Connect Studio"}
+            Studio bridge unavailable
           </button>
           <IconButton label="AI settings" onClick={() => setSettings(true)}>
             <Gear size={18} />
@@ -385,7 +398,7 @@ export function App() {
       </header>
       {sidebar && (
         <aside className="sidebar">
-          <button className="new-chat">
+          <button className="new-chat" onClick={newSession}>
             <Plus size={17} />
             New build session <kbd>⌘ N</kbd>
           </button>
@@ -397,7 +410,7 @@ export function App() {
             </button>
             <button className="side-link" onClick={() => setPanel("changes")}>
               <GitDiff />
-              Changes <span>7</span>
+              Changes <span>0</span>
             </button>
             <button className="side-link" onClick={() => setPanel("playtest")}>
               <GameController />
@@ -410,16 +423,17 @@ export function App() {
           </div>
           <div className="session-heading">
             <p>Recent sessions</p>
-            <button>View all</button>
+            <span>{chatSessions.length}</span>
           </div>
           <div className="sessions">
-            {sessions.map((s) => (
+            {chatSessions.map((s) => (
               <button
-                className={`session ${s.status === "active" ? "active" : ""}`}
+                className={`session ${s.id === currentSessionId ? "active" : ""}`}
                 key={s.id}
+                onClick={()=>openSession(s)}
               >
                 <span>{s.title}</span>
-                <small>{s.updated}</small>
+                <small>{s.messages.length} msgs</small>
               </button>
             ))}
           </div>
@@ -432,7 +446,7 @@ export function App() {
               <b>FREE</b>
               <p>{runtime==="local"?"Ollama connected":runtime==="error"?"Ollama unavailable":"No metered usage"}</p>
             </div>
-            <button className="side-link">
+            <button className="side-link" disabled title="Shortcut guide is not implemented yet">
               <Command />
               Keyboard shortcuts
             </button>
@@ -444,7 +458,7 @@ export function App() {
           <div className="chat-header">
             <div>
               <p>BUILD SESSION</p>
-              <h1>Combat arena prototype</h1>
+              <h1>{currentSession.title}</h1>
             </div>
             <button className="model" onClick={() => setSettings(true)}>
               <span className={active.kind} />
@@ -460,6 +474,7 @@ export function App() {
             <button onClick={() => setSettings(true)}>Configure</button>
           </div>
           <div className="messages">
+            {!messages.length&&<div className="real-empty-chat"><Sparkle/><h2>What are you building?</h2><p>Start a real conversation with your selected Ollama model. This session saves locally as you work.</p></div>}
             {messages.map((m) => (
               <article className={`message ${m.role}`} key={m.id}>
                 {m.role === "assistant" && (
@@ -521,14 +536,14 @@ export function App() {
               />
               <div className="composer-tools">
                 <div>
-                  <button title="Add context">
+                  <button title="File attachments are not implemented yet" disabled>
                     <Plus size={17} />
                   </button>
-                  <button className="mode">
+                  <button className="mode" disabled>
                     <Sparkle size={14} />
                     Build agent
                   </button>
-                  <button className="mode">
+                  <button className="mode" disabled>
                     <ShieldCheck size={14} />
                     High quality
                   </button>
@@ -546,10 +561,7 @@ export function App() {
                 </span>
               </div>
             </div>
-            <p className="hint">
-              Every build is reviewed and playtested before Stud Blox marks it
-              complete.
-            </p>
+            <p className="hint">AI responses come from your configured model. Studio changes require a future bridge connection.</p>
           </div>
         </section>
         <aside className="inspector">
@@ -566,7 +578,7 @@ export function App() {
               onClick={() => setPanel("changes")}
             >
               <GitDiff />
-              Changes <span>7</span>
+              Changes <span>0</span>
             </button>
             <button
               className={panel === "playtest" ? "active" : ""}
@@ -582,45 +594,20 @@ export function App() {
                 <MagnifyingGlass />
                 <input placeholder="Filter instances" />
               </div>
-              <div className="tree">
-                {tree.map((n) => (
-                  <ExplorerNode key={n.id} node={n} />
-                ))}
-              </div>
+              <div className="honest-empty"><TreeStructure/><b>No Studio connection</b><span>Explorer data will appear after the Roblox Studio bridge is installed and connected.</span></div>
               <div className="properties">
                 <p>SELECTION</p>
                 <div className="empty-selection">
                   <TreeStructure size={25} />
-                  <span>Select an instance to inspect its properties</span>
+                  <span>No instance selected</span>
                 </div>
               </div>
             </>
           )}
           {panel === "changes" && (
             <div className="change-list">
-              <div className="change-summary">
-                <b>7 changes ready</b>
-                <span>+184 −23</span>
-              </div>
-              {[
-                "RoundService.server.lua",
-                "SafeZoneController.lua",
-                "ArenaConfig.lua",
-                "RoundState",
-              ].map((x, i) => (
-                <button key={x}>
-                  <span className={i === 3 ? "added" : "modified"}>
-                    {i === 3 ? "A" : "M"}
-                  </span>
-                  <div>
-                    {x}
-                    <small>
-                      {i === 3 ? "ReplicatedStorage" : "ServerScriptService"}
-                    </small>
-                  </div>
-                  <CaretRight />
-                </button>
-              ))}
+              <div className="change-summary"><b>No changes yet</b><span>clean</span></div>
+              <div className="honest-empty"><GitDiff/><b>Nothing to review</b><span>Real file changes will appear here after a Studio bridge applies them.</span></div>
             </div>
           )}
           {panel === "playtest" && (
@@ -628,22 +615,18 @@ export function App() {
               <div className="test-orbit">
                 <GameController size={31} />
               </div>
-              <h3>Ready to test</h3>
+              <h3>Studio bridge required</h3>
               <p>
                 Run the experience and watch server output, assertions, and
                 player flows here.
               </p>
-              <button disabled={!connected}>Start playtest</button>
-              <small>
-                {connected
-                  ? "Quality gate will repair detected failures"
-                  : "Connect Studio to begin"}
-              </small>
+              <button disabled>Start playtest</button>
+              <small>Playtests are unavailable until the real Studio bridge ships.</small>
             </div>
           )}
         </aside>
       </main>
-      {command && <CommandMenu close={() => setCommand(false)} />}{" "}
+      {command && <CommandMenu close={() => setCommand(false)} onNew={newSession} />}{" "}
       {settings && (
         <ProviderDrawer
           close={() => setSettings(false)}
