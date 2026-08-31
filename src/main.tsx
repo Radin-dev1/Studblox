@@ -8,6 +8,7 @@ import './colors.css';
 import './styles.css';
 import './providers.css';
 import './workbench.css';
+import './workbench-tools.css';
 import './overlay.css';
 import './desktop.css';
 const root=import.meta.env.MODE==='desktop'?<DesktopShell/>:<DesktopLanding/>;
