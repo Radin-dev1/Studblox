@@ -1,7 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import {DesktopLanding} from './DesktopLanding';
+import {DesktopShell} from './DesktopShell';
 import './landing.css';
 import './auth.css';
 import './colors.css';
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><DesktopLanding/></React.StrictMode>);
+import './styles.css';
+import './providers.css';
+import './workbench.css';
+import './overlay.css';
+import './desktop.css';
+const root=import.meta.env.MODE==='desktop'?<DesktopShell/>:<DesktopLanding/>;
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode>{root}</React.StrictMode>);
